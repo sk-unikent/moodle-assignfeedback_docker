@@ -1,5 +1,7 @@
-# moodle-mod_dockerassignment
-Assignment submissions that are auto-graded in docker containers (experimental)
+# Auto-graded assignments within docker
+Assignment submissions that are auto-graded in docker containers.
+
+** DO NOT USE THIS ** It is for investigation only
 
 ## Testing docker
 ```
