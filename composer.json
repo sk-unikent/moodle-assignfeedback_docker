@@ -1,5 +1,5 @@
 {
     "require": {
-        "stage1/docker-php": "@dev"
+        "stage1/docker-php": "dev-master"
     }
 }
