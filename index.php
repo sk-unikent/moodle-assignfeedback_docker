@@ -22,6 +22,8 @@ $PAGE->set_pagelayout('standard');
 $PAGE->set_context(\context_system::instance());
 
 echo $OUTPUT->header();
+echo $OUTPUT->heading("Grading in docker container...");
+
 
 $client = new Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
 $docker = new Docker\Docker($client);
@@ -61,5 +63,7 @@ echo "</pre>";
 
 $manager->stop($container);
 $manager->remove($container);
+
+echo "Final grade for assignment: " . $container->getExitCode();
 
 echo $OUTPUT->footer();
