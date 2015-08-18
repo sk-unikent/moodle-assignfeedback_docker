@@ -18,21 +18,48 @@ require_once("../../../../config.php");
 
 require_login();
 $PAGE->set_url('/mod/assign/feedback/docker/index.php');
-$PAGE->set_pagelayout('general');
+$PAGE->set_pagelayout('standard');
+$PAGE->set_context(\context_system::instance());
 
 echo $OUTPUT->header();
 
 $client = new Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
 $docker = new Docker\Docker($client);
 
-$context = new Docker\Context\Context(dirname(__FILE__) . "/tests/fixtures/");
+$contextbuilder = new Docker\Context\ContextBuilder();
+$contextbuilder->from('centos:latest');
+$contextbuilder->add('/tmp/assignment', file_get_contents(dirname(__FILE__) . '/tests/fixtures/assignment.tar'));
 
 echo "<pre>";
-$docker->build($context, 'foo', function ($output) use (&$content, &$timecalled) {
+$docker->build($contextbuilder->getContext(), 'thisisauniqueid', function ($output) use (&$content, &$timecalled) {
     if (isset($output['stream'])) {
         echo $output['stream'] . "\n";
     }
-});
+}, true, false, true);
 echo "</pre>";
+
+$type   = 0;
+$output = "";
+
+$manager = $docker->getContainerManager();
+$container = new Docker\Container(array(
+    'Image' => 'thisisauniqueid',
+    'Cmd' => array('/usr/bin/python', '/tmp/assignment/src/grade.py')
+));
+$manager->create($container);
+$response = $manager->attach($container, function ($log, $stdtype) use (&$type, &$output) {
+    $type = $stdtype;
+    $output = $log;
+});
+$manager->start($container);
+
+$response->getBody()->getContents();
+
+echo "<pre>";
+echo $output;
+echo "</pre>";
+
+$manager->stop($container);
+$manager->remove($container);
 
 echo $OUTPUT->footer();
