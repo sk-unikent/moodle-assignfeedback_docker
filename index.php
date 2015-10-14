@@ -24,13 +24,17 @@ $PAGE->set_context(\context_system::instance());
 echo $OUTPUT->header();
 echo $OUTPUT->heading("Grading in docker container...");
 
-
 $client = new Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
 $docker = new Docker\Docker($client);
 
 $contextbuilder = new Docker\Context\ContextBuilder();
 $contextbuilder->from('centos:latest');
-$contextbuilder->add('/tmp/assignment', file_get_contents(dirname(__FILE__) . '/tests/fixtures/assignment.tar'));
+//$contextbuilder->add('/tmp/assignment', file_get_contents(dirname(__FILE__) . '/tests/fixtures/assignment.tar'));
+
+// Or the files?
+foreach (glob(dirname(__FILE__) . "/tests/fixtures/src/*") as $file) {
+    $contextbuilder->add('/tmp/assignment/src/' . basename($file), file_get_contents($file));
+}
 
 echo "<pre>";
 $docker->build($contextbuilder->getContext(), 'thisisauniqueid', function ($output) use (&$content, &$timecalled) {
