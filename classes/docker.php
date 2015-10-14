@@ -36,19 +36,19 @@ class docker {
     private $context;
     private $version;
     private $containerid;
-    private $outputbuffer = '';
+    private $buffer;
     private $built = false;
 
     /**
      * Constructor.
      */
-    public function __construct() {
+    public function __construct($containerversion = 'latest', $buffer = true) {
+        $this->buffer = $buffer;
+
         $client = new \Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
         $this->docker = new \Docker\Docker($client);
 
-        // TODO - separate into different container versions
-        // so we can allow users to say "I want PHP 7.0".
-        $this->version = 1;
+        $this->version = $containerversion;
         $this->containerid = "moodle-docker-{$this->version}";
 
         $this->context = new \Docker\Context\ContextBuilder();
@@ -58,6 +58,7 @@ class docker {
         $this->context->run('chown w3moodle /build');
 
         switch ($this->version) {
+            case 'latest':
             default:
                 $this->context->run('yum install -y php');
             break;
@@ -72,19 +73,17 @@ class docker {
             return;
         }
 
-        $text = '';
         $context = $this->context->getContext();
 
-        $this->docker->build($context, $this->containerid, function ($output) use (&$text) {
-            $text .= $output['stream'] . "\n";
+        $this->docker->build($context, $this->containerid, function ($output) {
+            echo $output['stream'] . "\n";
         }, true, false, true);
 
-        $this->outputbuffer .= $text;
         $this->built = true;
     }
 
     /**
-     * Return the output buffer.
+     * Return the output buffer (only if we are buffering).
      */
     public function get_output() {
         return $this->outputbuffer;
@@ -105,10 +104,11 @@ class docker {
      * Run the container.
      */
     public function run($command) {
-        $this->build_container();
+        if ($this->buffer) {
+            ob_start();
+        }
 
-        $type   = 0;
-        $output = "";
+        $this->build_container();
 
         // Create the runtime environment.
         $manager = $this->docker->getContainerManager();
@@ -119,13 +119,10 @@ class docker {
         $manager->create($container);
 
         // Attach to the container.
-        $response = $manager->attach($container, function ($log, $stdtype) use (&$type, &$output) {
-            $type = $stdtype;
-            $output = $log;
+        $response = $manager->attach($container, function ($log, $stdtype) {
+            echo "\n{$log}\n";
         });
         $manager->start($container);
-
-        $this->outputbuffer .= "\n{$output}\n";
 
         // Buffer this.
         $response->getBody()->getContents();
@@ -133,6 +130,11 @@ class docker {
         // Finish up.
         $manager->stop($container);
         $manager->remove($container);
+
+        if ($this->buffer) {
+            $this->outputbuffer .= ob_get_contents();
+            ob_end_clean();
+        }
 
         return $container->getExitCode();
     }

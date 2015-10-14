@@ -18,7 +18,7 @@ define('CLI_SCRIPT', true);
 
 require_once(dirname(__FILE__) . "/../../../../../config.php");
 
-$docker = new \assignfeedback_docker\docker();
+$docker = new \assignfeedback_docker\docker('latest', false);
 foreach (glob(dirname(__FILE__) . "/../tests/fixtures/src/*") as $file) {
     $docker->add_file($file, dirname(__FILE__) . "/../tests/fixtures/src/");
 }
