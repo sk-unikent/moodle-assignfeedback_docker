@@ -14,3 +14,8 @@ Final grade: 100
 ▶ echo $?
 100
 ```
+
+## Build environment
+```
+PHP 5.5 (/usr/bin/php55)
+PHP 7.0 (/usr/bin/php70)

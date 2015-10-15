@@ -32,7 +32,10 @@ namespace assignfeedback_docker;
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class docker {
-    const LATEST_VERSION = '0.0.1';
+    const BASE_VERSION = 'base_1';
+    const PHP5_VERSION = 'php5_1';
+    const PYTHON2_VERSION = 'python2_1';
+    const PYTHON3_VERSION = 'python3_1';
     private $docker;
     private $context;
     private $version;
@@ -51,7 +54,7 @@ class docker {
         $this->docker = new \Docker\Docker($client);
 
         if ($containerversion == 'latest') {
-            $containerversion = self::LATEST_VERSION;
+            $containerversion = self::BASE_VERSION;
         }
 
         $this->version = $containerversion;
@@ -62,13 +65,36 @@ class docker {
         $this->context->run('adduser w3moodle');
         $this->context->run('mkdir /build');
         $this->context->run('chown w3moodle /build');
+        $this->context->run('yum install -y scl-utils');
 
         switch ($this->version) {
-            case '0.0.1':
-            default:
-                $this->context->run('yum install -y php');
+            case self::PHP5_VERSION:
+                $this->install_scl('rh-php56');
+            break;
+
+            case self::PYTHON3_VERSION:
+                $this->install_scl('rh-python34');
+            break;
+
+            case self::PYTHON2_VERSION:
+                $this->install_scl('python27');
             break;
         }
+
+        $this->start_buffer();
+        $this->build_container();
+        $this->end_buffer();
+    }
+
+    /**
+     * SCL shorthand.
+     */
+    private function install_scl($package) {
+        $url = "https://www.softwarecollections.org/en/scls/rhscl/{$package}/epel-7-x86_64/download/rhscl-{$package}-epel-7-x86_64.noarch.rpm";
+        $this->context->run("rpm -ivh {$url}");
+        $this->context->run("yum install -y {$package}");
+        $this->context->run("scl enable {$package} bash");
+        $this->context->run("echo 'source /opt/rh/{$package}/enable' >> /etc/bashrc");
     }
 
     /**
@@ -83,6 +109,7 @@ class docker {
         echo "~~~~~~~ University of kent ~~~~~~~\n";
         echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
         echo "\n";
+        echo "Container hash: {$this->containerid}\n\n";
 
         // Check we have the image.
         $imageman = $this->docker->getImageManager();
@@ -101,7 +128,7 @@ class docker {
             if (isset($output['stream'])) {
                 echo $output['stream'] . "\n";
             }
-        }, true, true, true);
+        }, false, true, true);
 
         echo " ->  Build complete!\n\n";
 
@@ -113,6 +140,15 @@ class docker {
      */
     public function get_output() {
         return $this->outputbuffer;
+    }
+
+    /**
+     * Flush the output buffer (only if we are buffering).
+     */
+    public function flush_output() {
+        $output = $this->outputbuffer;
+        $this->outputbuffer = '';
+        return $output;
     }
 
     /**
@@ -132,14 +168,29 @@ class docker {
     }
 
     /**
-     * Run the container.
+     * Should we start buffering?
      */
-    public function run($command) {
+    private function start_buffer() {
         if ($this->buffer) {
             ob_start();
         }
+    }
 
-        $this->build_container();
+    /**
+     * Should we end buffering?
+     */
+    private function end_buffer() {
+        if ($this->buffer) {
+            $this->outputbuffer .= ob_get_contents();
+            ob_end_clean();
+        }
+    }
+
+    /**
+     * Run the container.
+     */
+    public function run($command) {
+        $this->start_buffer();
 
         // Create the runtime environment.
         $manager = $this->docker->getContainerManager();
@@ -161,10 +212,7 @@ class docker {
         // Finish up.
         $manager->stop($container);
 
-        if ($this->buffer) {
-            $this->outputbuffer .= ob_get_contents();
-            ob_end_clean();
-        }
+        $this->end_buffer();
 
         return $container->getExitCode();
     }

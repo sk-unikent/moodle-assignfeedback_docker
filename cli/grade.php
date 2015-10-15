@@ -18,11 +18,19 @@ define('CLI_SCRIPT', true);
 
 require_once(dirname(__FILE__) . "/../../../../../config.php");
 
-$docker = new \assignfeedback_docker\docker('latest', false);
-foreach (glob(dirname(__FILE__) . "/../tests/fixtures/src/*") as $file) {
-    $docker->add_file($file, dirname(__FILE__) . "/../tests/fixtures/src/");
-}
+use \assignfeedback_docker\docker;
 
-$grade = $docker->run(array('/usr/bin/python', '/build/grade.py'));
+$docker = new docker(docker::PHP5_VERSION);
+$docker->flush_output();
+$docker->run(['/opt/rh/rh-php56/root/usr/bin/php', '--version']);
+echo $docker->get_output();
 
-echo "Final grade for assignment: {$grade}\n";
+$docker = new docker(docker::PYTHON2_VERSION);
+$docker->flush_output();
+$docker->run(['/opt/rh/rh-python27/root/usr/bin/python', '--version']);
+echo $docker->get_output();
+
+$docker = new docker(docker::PYTHON3_VERSION);
+$docker->flush_output();
+$docker->run(['/opt/rh/rh-python31/root/usr/bin/python', '--version']);
+echo $docker->get_output();
