@@ -32,11 +32,13 @@ namespace assignfeedback_docker;
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class docker {
+    const LATEST_VERSION = '0.0.1';
     private $docker;
     private $context;
     private $version;
     private $containerid;
     private $buffer;
+    private $outputbuffer;
     private $built = false;
 
     /**
@@ -48,8 +50,12 @@ class docker {
         $client = new \Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
         $this->docker = new \Docker\Docker($client);
 
+        if ($containerversion == 'latest') {
+            $containerversion = self::LATEST_VERSION;
+        }
+
         $this->version = $containerversion;
-        $this->containerid = "moodle-docker-{$this->version}";
+        $this->containerid = hash('adler32', "moodle-docker-{$this->version}");
 
         $this->context = new \Docker\Context\ContextBuilder();
         $this->context->from('centos:latest');
@@ -58,7 +64,7 @@ class docker {
         $this->context->run('chown w3moodle /build');
 
         switch ($this->version) {
-            case 'latest':
+            case '0.0.1':
             default:
                 $this->context->run('yum install -y php');
             break;
@@ -73,11 +79,31 @@ class docker {
             return;
         }
 
-        $context = $this->context->getContext();
+        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+        echo "~~~~~~~ University of kent ~~~~~~~\n";
+        echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n";
+        echo "\n";
 
+        // Check we have the image.
+        $imageman = $this->docker->getImageManager();
+        try {
+            $image = $imageman->find('centos', 'latest');
+        } catch (\Exception $e) {
+            echo " -> Pulling base image...\n\n";
+            $imageman->pull('centos', 'latest');
+        }
+
+        echo " -> Building docker container, version: {$this->version}...\n\n";
+
+        // Run the build.
+        $context = $this->context->getContext();
         $this->docker->build($context, $this->containerid, function ($output) {
-            echo $output['stream'] . "\n";
-        }, true, false, true);
+            if (isset($output['stream'])) {
+                echo $output['stream'] . "\n";
+            }
+        }, true, true, true);
+
+        echo " ->  Build complete!\n\n";
 
         $this->built = true;
     }
@@ -95,6 +121,11 @@ class docker {
     public function add_file($filename, $relativeto) {
         $relativeto = realpath($relativeto);
         $filename = realpath($filename);
+
+        // Slashes.
+        if (strrpos($relativeto, '/') + 1 !== strlen($relativeto)) {
+            $relativeto .= '/';
+        }
 
         $basename = substr($filename, strlen($relativeto));
         $this->context->add('/build/' . $basename, file_get_contents($filename));
@@ -129,7 +160,6 @@ class docker {
 
         // Finish up.
         $manager->stop($container);
-        $manager->remove($container);
 
         if ($this->buffer) {
             $this->outputbuffer .= ob_get_contents();

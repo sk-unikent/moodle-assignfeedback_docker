@@ -23,10 +23,6 @@ foreach (glob(dirname(__FILE__) . "/../tests/fixtures/src/*") as $file) {
     $docker->add_file($file, dirname(__FILE__) . "/../tests/fixtures/src/");
 }
 
-$grade = $docker->run(array('/usr/bin/python', '/data/grade.py'));
+$grade = $docker->run(array('/usr/bin/python', '/build/grade.py'));
 
-echo "<pre>";
-echo $docker->get_output();
-echo "</pre>";
-
-echo "Final grade for assignment: " . $grade;
+echo "Final grade for assignment: {$grade}\n";
