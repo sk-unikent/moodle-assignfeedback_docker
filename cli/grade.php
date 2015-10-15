@@ -27,7 +27,7 @@ echo $docker->get_output();
 
 $docker = new docker(docker::PYTHON2_VERSION);
 $docker->flush_output();
-$docker->run(['/opt/rh/rh-python27/root/usr/bin/python', '--version']);
+$docker->run(['/opt/rh/python27/root/usr/bin/python', '--version']);
 echo $docker->get_output();
 
 $docker = new docker(docker::PYTHON3_VERSION);

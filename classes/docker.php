@@ -42,18 +42,19 @@ class docker {
     private $containerid;
     private $buffer;
     private $outputbuffer;
-    private $built = false;
+    private $built;
 
     /**
      * Constructor.
      */
-    public function __construct($containerversion = 'latest', $buffer = true) {
+    public function __construct($containerversion = 'base', $buffer = true) {
         $this->buffer = $buffer;
+        $this->built = false;
 
         $client = new \Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
         $this->docker = new \Docker\Docker($client);
 
-        if ($containerversion == 'latest') {
+        if ($containerversion == 'base') {
             $containerversion = self::BASE_VERSION;
         }
 
@@ -65,19 +66,19 @@ class docker {
         $this->context->run('adduser w3moodle');
         $this->context->run('mkdir /build');
         $this->context->run('chown w3moodle /build');
-        $this->context->run('yum install -y scl-utils');
+        $this->context->run('yum install -y scl-utils scl-utils-build redhat-rpm-config xml-common zip');
 
         switch ($this->version) {
             case self::PHP5_VERSION:
                 $this->install_scl('rh-php56');
             break;
 
-            case self::PYTHON3_VERSION:
-                $this->install_scl('rh-python34');
-            break;
-
             case self::PYTHON2_VERSION:
                 $this->install_scl('python27');
+            break;
+
+            case self::PYTHON3_VERSION:
+                $this->install_scl('rh-python34');
             break;
         }
 
@@ -92,7 +93,7 @@ class docker {
     private function install_scl($package) {
         $url = "https://www.softwarecollections.org/en/scls/rhscl/{$package}/epel-7-x86_64/download/rhscl-{$package}-epel-7-x86_64.noarch.rpm";
         $this->context->run("rpm -ivh {$url}");
-        $this->context->run("yum install -y {$package}");
+        $this->context->run("yum install -y --skip-broken {$package}");
         $this->context->run("scl enable {$package} bash");
         $this->context->run("echo 'source /opt/rh/{$package}/enable' >> /etc/bashrc");
     }
@@ -120,19 +121,25 @@ class docker {
             $imageman->pull('centos', 'latest');
         }
 
-        echo " -> Building docker container, version: {$this->version}...\n\n";
+        echo "-> Building docker container, version: {$this->version}...\n\n";
 
         // Run the build.
         $context = $this->context->getContext();
-        $this->docker->build($context, $this->containerid, function ($output) {
+        $result = $this->docker->build($context, $this->containerid, function ($output) {
             if (isset($output['stream'])) {
                 echo $output['stream'] . "\n";
             }
-        }, false, true, true);
+        });
 
-        echo " ->  Build complete!\n\n";
+        if (!$result) {
+            echo "->  Build failed!\n\n";
+            return false;
+        }
+
+        echo "->  Build complete!\n\n";
 
         $this->built = true;
+        return true;
     }
 
     /**
@@ -190,6 +197,10 @@ class docker {
      * Run the container.
      */
     public function run($command) {
+        if (!$this->built) {
+            return false;
+        }
+
         $this->start_buffer();
 
         // Create the runtime environment.
