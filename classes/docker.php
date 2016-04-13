@@ -47,11 +47,14 @@ class docker {
     /**
      * Constructor.
      */
-    public function __construct($containerversion = 'base', $buffer = true) {
+    public function __construct($containerversion = 'base', $buffer = false) {
         $this->buffer = $buffer;
         $this->built = false;
 
-        $client = new \Docker\Http\DockerClient(array(), 'unix:///var/run/docker.sock');
+        $client = new \Docker\DockerClient([
+            'remote_socket' => 'unix:///var/run/docker.sock',
+            'ssl' => false
+        ]);
         $this->docker = new \Docker\Docker($client);
 
         if ($containerversion == 'base') {
@@ -81,10 +84,6 @@ class docker {
                 $this->install_scl('rh-python34');
             break;
         }
-
-        $this->start_buffer();
-        $this->build_container();
-        $this->end_buffer();
     }
 
     /**
@@ -118,18 +117,20 @@ class docker {
             $image = $imageman->find('centos', 'latest');
         } catch (\Exception $e) {
             echo " -> Pulling base image...\n\n";
-            $imageman->pull('centos', 'latest');
+            $imageman->create('centos:latest');
         }
 
         echo "-> Building docker container, version: {$this->version}...\n\n";
 
         // Run the build.
         $context = $this->context->getContext();
-        $result = $this->docker->build($context, $this->containerid, function ($output) {
-            if (isset($output['stream'])) {
-                echo $output['stream'] . "\n";
-            }
+        $result = $imageman->build($context->toStream(), [
+            't' => $this->containerid
+        ], \Docker\Manager\ContainerManager::FETCH_STREAM);
+        $result->onFrame(function (\Docker\API\Model\BuildInfo $buildinfo) {
+            echo $buildinfo->getStream();
         });
+        $result->wait();
 
         if (!$result) {
             echo "->  Build failed!\n\n";
@@ -197,34 +198,52 @@ class docker {
      * Run the container.
      */
     public function run($command) {
-        if (!$this->built) {
-            return false;
-        }
-
         $this->start_buffer();
+
+        if (!$this->built) {
+            if (!$this->build_container()) {
+                return false;
+            }
+        }
 
         // Create the runtime environment.
         $manager = $this->docker->getContainerManager();
-        $container = new \Docker\Container(array(
-            'Image' => $this->containerid,
-            'Cmd' => $command
-        ));
-        $manager->create($container);
+
+        $config = new \Docker\API\Model\ContainerConfig();
+        $config->setImage($this->containerid);
+        $config->setCmd($command);
+        $config->setAttachStdin(true);
+        $config->setAttachStdout(true);
+        $config->setAttachStderr(true);
+
+        $createresult = $manager->create($config);
+        $id = $createresult->getId();
+        $container = $manager->find($id);
 
         // Attach to the container.
-        $response = $manager->attach($container, function ($log, $stdtype) {
-            echo "\n{$log}\n";
-        });
-        $manager->start($container);
+        $response = $manager->attach($id, [
+            'stream' => true,
+            'stdin' => true,
+            'stdout' => true,
+            'stderr' => true
+        ]);
 
-        // Buffer this.
-        $response->getBody()->getContents();
+        $manager->start($id);
+
+        $response->onStdout(function ($stdout) {
+            echo "\n{$stdout}\n";
+        });
+        $response->onStderr(function ($stderr) {
+            echo "\n{$stderr}\n";
+        });
+
+        $response->wait();
 
         // Finish up.
-        $manager->stop($container);
+        $manager->stop($id);
 
         $this->end_buffer();
 
-        return $container->getExitCode();
+        return $container->getState()->getExitCode();
     }
 }

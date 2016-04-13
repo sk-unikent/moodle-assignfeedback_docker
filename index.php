@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+define('NO_OUTPUT_BUFFERING', true);
+
 require_once("../../../../config.php");
 
 require_login();
@@ -24,15 +26,16 @@ $PAGE->set_context(\context_system::instance());
 echo $OUTPUT->header();
 echo $OUTPUT->heading("Grading in docker container...");
 
+\core\session\manager::write_close();
+
+echo "<pre>";
 $docker = new \assignfeedback_docker\docker();
 foreach (glob(dirname(__FILE__) . "/tests/fixtures/src/*") as $file) {
     $docker->add_file($file, dirname(__FILE__) . "/tests/fixtures/src/");
 }
 
 $grade = $docker->run(array('/usr/bin/python', '/build/grade.py'));
-
-echo "<pre>";
-echo $docker->get_output();
+echo $docker->flush_output();
 echo "</pre>";
 
 echo "Final grade for assignment: " . $grade;
